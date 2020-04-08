@@ -1,0 +1,157 @@
+# installing erapor di debian linux
+# berikut adalah langkah-langkahnya
+
+#install debian 10
+#installkan ssh server agar kita dapat mecopy file repositorynya
+# masuk ke superuser
+apt-get install openssh-server -y
+
+# masuk ke superuser
+# buka directory source list
+nano /etc/apt/source.lis
+
+# masukkan repository berikut ke source list
+deb http://kebo.vlsm.org/debian/ buster main contrib non-free
+deb http://kebo.vlsm.org/debian/ buster-updates main contrib non-free
+deb http://kebo.vlsm.org/debian-security/ buster/updates main contrib non-free 
+
+# selanjutnya update debian 9
+apt-get update -y
+apt-get upgrade -y
+
+# selesai selanjutnya install semua pakat pendukung dari erapor
+apt-get install apache2 libapache2-mod-php php php-xml php-gd php-opcache php-mbstring php-curl php-zip php-pgsql composer postgresql postgresql-contrib -y
+
+# gunakan perintah berikut untuk mengetahui versi debian kita
+uname -a
+
+# gunakan perintah berikut untuk mengetahui versi php kita
+php -v
+
+# menambahkan extensi ioncube ke php
+# sesuaikan file ioncube yang kita download dengan versi debian dan php
+# untuk yang versi x64 menggunakan 
+# http://downloads3.ioncube.com/loader_downloads/ioncube_loaders_lin_x86-64.tar.gz
+# untuk yang versi x32 menggunakan 
+# http://downloads3.ioncube.com/loader_downloads/ioncube_loaders_lin_x86.tar.gz
+# masuk ke superuser
+cd /tmp/
+wget https://downloads.ioncube.com/loader_downloads/ioncube_loaders_lin_x86-64.tar.gz
+tar xzf ioncube_loaders_lin_x86-64.tar.gz
+cp ioncube/ioncube_loader_lin_7.3.so /usr/lib/php/7.3/
+
+# Tambahkan ionCube Loader sebagai ekstensi PHP dengan 
+# mengedit file (bisa menggunakan nano) /etc/php/7.2/apache2/php.ini dan 
+# /etc/php/7.2/cli/php.ini pada bagian atas file yang bertanda [PHP] menjadi seperti ini:
+zend_extension=/usr/lib/php/7.3/ioncube_loader_lin_7.3.so
+
+# restart apachenya
+/etc/init.d/apache2 restart
+
+# cek ioncubenya apakah sudah include atau belom
+php -v
+
+# jika keluar pesan seperti ini, artinya config ioncube telah berhasil
+PHP 7.3.14-1~deb10u1 (cli) (built: Feb 16 2020 15:07:23) ( NTS )
+Copyright (c) 1997-2018 The PHP Group
+Zend Engine v3.3.14, Copyright (c) 1998-2018 Zend Technologies
+    with the ionCube PHP Loader + ionCube24 v10.3.9, Copyright (c) 2002-2019, by ionCube Ltd.
+    with Zend OPcache v7.3.14-1~deb10u1, Copyright (c) 1999-2018, by Zend Technologies
+
+# selanjutnya membuat akun dan database
+sudo -u postgres createuser --interactive
+
+# sesuaikan namanya dengan erapor
+Enter name of role to add: erapor
+Shall the new role be a superuser? (y/n) y
+
+# create database postgres untuk erapor
+sudo -u postgres createdb erapor
+
+# set password akun database
+sudo -u postgres psql
+ALTER USER erapor WITH PASSWORD 'passwordnya';
+# output harusnya ALTER ROLE, jika gagal mohon perhatikan lagi config lu
+# untuk logout ketik exit enter
+exit
+
+# selanjutnya Cloning aplikasi eRapor SMK dari repository
+# masuk ke directory home (sesuaikan dengan nama home lu)
+su sunny
+cd
+# gunakan perintah pwd untuk memastikan
+pwd
+
+# lakukan cloning repository
+git clone --depth=1 https://github.com/eraporsmk/eraporsmk.git erapor5
+
+# masuk ke directory erapor5 dan hapus git
+cd erapor5
+rm -rf .git
+
+# Install dependencies menggunakan composer
+composer install
+
+############################################################################################
+#PERHATIAN:										   #
+#proses ini dapat berlangsung cukup lama, tergantung beban server yang diakses dan koneksi #
+#internet yang Anda gunakan. Jika ada bagian yang “failed”, ulangi kembali 		   #
+#menjalankan perintah tersebut								   #
+############################################################################################
+# jika sudah succesfully selanjutnya setting koneksi database
+cp .env.example .env
+nano .env
+
+# dalam isi .env sesuaikan dengan tutorial ayng di berikan di erapor linux
+# sesuaikan file berikut
+DB_DATABASE=erapor
+DB_USERNAME=erapor
+DB_PASSWORD=passwordnya
+
+# selanjutnya Generate App Key
+php artisan key:generate
+
+# outputnya application key succesfully
+#Membuat struktur table
+
+php artisan migrate
+
+# Menjalankan Seeder untuk mengisi database dengan data referensi
+php artisan db:seed
+
+# Mengganti kepemilikan file dan directory web kepada webserver 
+# serta memindah aplikasi ke /var/www/
+su
+# masukkan passwordnya
+sudo chown -R www-data:www-data /home/sunny/erapor5/
+mv /home/sunny/erapor5/ /var/www/
+
+# Mengaktifkan mod_rewrite di Apache
+sudo a2enmod rewrite
+# output
+Enabling module rewrite.
+To activate the new configuration, you need to run:
+  systemctl restart apache2
+
+# restart file apachenya
+/etc/init.d/apache2 restart
+
+# Menambahkan setting pada Apache untuk membolehkan 
+# penggunaan file .htaccess dan mengganti DocumentRoot ke directory public
+# backup dulu file lamanya
+cp /etc/apache2/sites-enabled/000-default.conf /etc/apache2/sites-enabled/000-default.conf.back
+nano /etc/apache2/sites-enabled/000-default.conf
+
+# Sesuaikan bagian DocumentRoot menjadi sebagai berikut 
+# serta tambahkan 3 baris seperti ini di bawahnya :
+
+        DocumentRoot /var/www/erapor5/public
+        <Directory /var/www/erapor5/public>
+                AllowOverride All
+        </Directory>
+
+# Reload service Apache 
+/etc/init.d/apache2 restart
+
+# selesai
+# http://seputar.erapor-smk.net/2019/10/22/tutorial-instalasi-erapor-smk-v5-0-0-di-linux/
